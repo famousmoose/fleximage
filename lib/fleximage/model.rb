@@ -90,6 +90,8 @@ module Fleximage
         # Internal method to ask this class if it stores image in the DB.
         def self.db_store?
           return false if s3_store?
+          return false if mogilefs_store?
+
           if respond_to?(:columns)
             columns.find do |col|
               col.name == 'image_file_data'
@@ -104,11 +106,15 @@ module Fleximage
         end
         
         def self.file_store?
-          !db_store? && !s3_store?
+          !db_store? && !s3_store? && !mogilefs_store?
         end
         
+        def self.mogilefs_store?
+          !!mogilefs_connection
+        end
+
         def self.has_store?
-          respond_to?(:columns) && (db_store? || s3_store? || image_directory)
+          respond_to?(:columns) && (db_store? || s3_store? || mogilefs_store? || image_directory)
         end
         
         # validation callback
@@ -127,6 +133,9 @@ module Fleximage
         # Amazon S3 bucket where the master images are stored
         dsl_accessor :s3_bucket
         
+        # Mogilefs Connection information
+        dsl_accessor :mogilefs_connection
+
         # Put uploads from different days into different subdirectories
         dsl_accessor :use_creation_date_based_directories, :default => true
         
@@ -228,15 +237,21 @@ module Fleximage
           end
         end
         
+        #Connect to mogilefs
+        if mogilefs_connection
+          #Code to connect to mogilefs
+          @mogile = MogileFS::MogileFS.new(mogilefs_connection)
+        end
+
         # set the image directory from passed options
         image_directory options[:image_directory] if options[:image_directory]
         
         # Require the declaration of a master image storage directory
-        if respond_to?(:validate) && !image_directory && !db_store? && !s3_store? && !default_image && !default_image_path
+        if respond_to?(:validate) && !image_directory && !db_store? && !s3_store? && !mogilefs_connection? && !default_image && !default_image_path
           raise "No place to put images!  Declare this via the :image_directory => 'path/to/directory' option\n"+
                 "Or add a database column named image_file_data for DB storage\n"+
                 "Or set :virtual to true if this class has no image store at all\n"+
-                "Or set a default image to show with :default_image or :default_image_path"
+                "Or set a default image to show with :default_image or :default_image_path"i
         end
       end
       
@@ -457,6 +472,8 @@ module Fleximage
           AWS::S3::S3Object.exists?("#{id}.#{self.class.image_storage_format}", self.class.s3_bucket)
         elsif self.class.file_store?
           File.exists?(file_path)
+        elsif self.class.mogilefs_store?
+         !@mogile.get_paths("#{id}.#{self.class.image_storage_format}").empty?
         end
       end
       
@@ -508,7 +525,10 @@ module Fleximage
           if AWS::S3::S3Object.exists?(filename, bucket)
             @output_image = Magick::Image.from_blob(AWS::S3::S3Object.value(filename, bucket)).first
           end
-        
+        elsif self.mogilefs_store?
+          #Load image from mogilefs
+          filename = "#{id}.#{self.class.image_storage_format}"
+          @output_image = @mogile.get_file_data(filename) 
         else
           # Load the image from the disk
           @output_image = Magick::Image.read(file_path).first
@@ -554,6 +574,8 @@ module Fleximage
           update_attribute :image_file_data, nil unless frozen?
         elsif self.class.s3_store?
           AWS::S3::S3Object.delete "#{id}.#{self.class.image_storage_format}", self.class.s3_bucket
+        elsif self.class.mogilefs_store?
+          @mogile.delete "#{id}.#{self.class.image_storage_format}"
         else
           File.delete(file_path) if File.exists?(file_path)
         end
@@ -616,7 +638,9 @@ module Fleximage
             elsif self.class.s3_store?
               blob = StringIO.new(@uploaded_image.to_blob)
               AWS::S3::S3Object.store("#{id}.#{self.class.image_storage_format}", blob, self.class.s3_bucket)
-              
+            elsif self.class.mogilefs_store?
+              blob = StringIO.new(@uploaded_image.to_blob)
+              @mogile.store_content("#{id}.#{self.class.image_storage_format}", :images, blob)
             end
           end
           
