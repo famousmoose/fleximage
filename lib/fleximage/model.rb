@@ -251,7 +251,7 @@ module Fleximage
           raise "No place to put images!  Declare this via the :image_directory => 'path/to/directory' option\n"+
                 "Or add a database column named image_file_data for DB storage\n"+
                 "Or set :virtual to true if this class has no image store at all\n"+
-                "Or set a default image to show with :default_image or :default_image_path"i
+                "Or set a default image to show with :default_image or :default_image_path"
         end
       end
       
