@@ -247,7 +247,7 @@ module Fleximage
         image_directory options[:image_directory] if options[:image_directory]
         
         # Require the declaration of a master image storage directory
-        if respond_to?(:validate) && !image_directory && !db_store? && !s3_store? && !mogilefs_connection? && !default_image && !default_image_path
+        if respond_to?(:validate) && !image_directory && !db_store? && !s3_store? && !mogilefs_store? && !default_image && !default_image_path
           raise "No place to put images!  Declare this via the :image_directory => 'path/to/directory' option\n"+
                 "Or add a database column named image_file_data for DB storage\n"+
                 "Or set :virtual to true if this class has no image store at all\n"+
@@ -305,7 +305,9 @@ module Fleximage
       def file_path
         "#{directory_path}/#{id}.#{extension}"
       end
-
+      def mogile_key(prefix='')
+        "#{prefix}#{id}.#{self.class.image_storage_format}"
+      end
       # Returns original format of the image if the image_format column exists
       # otherwise returns the globally set format.
       def extension
