@@ -120,6 +120,9 @@ module Fleximage
         def self.mogile
           @mogile
         end
+        def self.mogilefs_class
+          mogilefs_connection[:class]
+        end
         # validation callback
         validate :validate_image if respond_to?(:validate)
         
@@ -258,7 +261,7 @@ module Fleximage
                 "Or add a database column named image_file_data for DB storage\n"+
                 "Or set :virtual to true if this class has no image store at all\n"+
                 "Or define a :mogilefs_connection\n"+
-                "Or set a default image to show with :default_image or :default_image_path"+"#{mogilefs_store?} #{mogilefs_connection}"
+                "Or set a default image to show with :default_image or :default_image_path"
         end
       end
       
@@ -540,7 +543,11 @@ module Fleximage
         elsif self.class.mogilefs_store?
           #Load image from mogilefs
           filename = "#{id}.#{self.class.image_storage_format}"
-          @output_image = Magick::Image.from_blob(self.class.mogile.get_file_data(filename)).first 
+          if File.exists?(file_path)
+            @output_image = Magick::Image.read(file_path).first
+          else
+            @output_image = Magick::Image.from_blob(self.class.mogile.get_file_data(filename)).first 
+          end
         else
           # Load the image from the disk
           @output_image = Magick::Image.read(file_path).first
@@ -652,7 +659,7 @@ module Fleximage
               AWS::S3::S3Object.store("#{id}.#{self.class.image_storage_format}", blob, self.class.s3_bucket)
             elsif self.class.mogilefs_store?
 #              blob = StringIO.new(@uploaded_image.to_blob)
-              self.class.mogile.store_content("#{id}.#{self.class.image_storage_format}", :images, @uploaded_image.to_blob)
+              self.class.mogile.store_content("#{id}.#{self.class.image_storage_format}", self.class.mogilefs_class, @uploaded_image.to_blob)
             end
           end
           
